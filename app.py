@@ -5,7 +5,6 @@ import joblib
 import plotly.express as px
 
 from sklearn.cluster import KMeans
-from surprise import SVD, Dataset, Reader
 
 # =========================
 # CONFIG
@@ -81,10 +80,16 @@ elif menu == "👥 Segmentation":
 # =========================
 # RECOMMENDATION (SURPRISE)
 # =========================
-top_products = df["product_id"].value_counts().head(10)
+elif menu == "🎯 Recommendation":
+    st.subheader("Product Recommendation")
 
-st.write("Top recommended products:")
-st.write(top_products)
+    user_id = st.text_input("Enter Customer ID")
+
+    if user_id:
+        top_products = df["product_id"].value_counts().head(10)
+
+        st.write("Top recommended products:")
+        st.write(top_products)
 # =========================
 # FP-GROWTH
 # =========================
