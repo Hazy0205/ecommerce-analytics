@@ -81,33 +81,10 @@ elif menu == "👥 Segmentation":
 # =========================
 # RECOMMENDATION (SURPRISE)
 # =========================
-elif menu == "🎯 Recommendation":
-    st.subheader("Product Recommendation (SVD)")
+top_products = df["product_id"].value_counts().head(10)
 
-    data = df[["customer_unique_id","product_id","review_score"]].dropna()
-
-    reader = Reader(rating_scale=(1,5))
-    dataset = Dataset.load_from_df(data, reader)
-
-    trainset = dataset.build_full_trainset()
-    model = SVD()
-    model.fit(trainset)
-
-    user_id = st.text_input("Enter Customer ID")
-
-    if user_id:
-        products = df["product_id"].unique()
-        preds = []
-
-        for p in products[:200]:  # giới hạn để tránh lag
-            pred = model.predict(user_id, p)
-            preds.append((p, pred.est))
-
-        preds = sorted(preds, key=lambda x: x[1], reverse=True)[:10]
-
-        rec_df = pd.DataFrame(preds, columns=["product_id","score"])
-        st.write(rec_df)
-
+st.write("Top recommended products:")
+st.write(top_products)
 # =========================
 # FP-GROWTH
 # =========================
