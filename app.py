@@ -169,19 +169,22 @@ elif menu == "⚙️ Admin":
 
     file = st.file_uploader("Upload new dataset")
 
-    if file:
+    if file is not None:
         new_df = pd.read_csv(file)
         st.write(new_df.head())
 
     if st.button("Retrain Model"):
-       data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
+        # 🔥 đảm bảo X và y cùng index
+        data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
 
-       X = data_model[["price","freight_value","payment_value"]]
-       y = data_model["review_score"]
+        X = data_model[["price","freight_value","payment_value"]]
+        y = data_model["review_score"]
 
-       from sklearn.linear_model import LogisticRegression
+        from sklearn.linear_model import LogisticRegression
+
         model = LogisticRegression(max_iter=1000)
         model.fit(X, y)
 
         joblib.dump(model, "classifier.pkl")
+
         st.success("Model retrained!")
