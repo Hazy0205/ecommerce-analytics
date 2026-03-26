@@ -81,15 +81,56 @@ elif menu == "👥 Segmentation":
 # RECOMMENDATION (SURPRISE)
 # =========================
 elif menu == "🎯 Recommendation":
-    st.subheader("Product Recommendation")
+    st.subheader("Product Recommendation (SVD)")
+
+    data = df[["customer_unique_id","product_id","review_score"]].dropna()
+
+    reader = Reader(rating_scale=(1,5))
+    dataset = Dataset.load_from_df(data, reader)
+
+    trainset = dataset.build_full_trainset()
+    model = SVD()
+    model.fit(trainset)
 
     user_id = st.text_input("Enter Customer ID")
 
     if user_id:
-        top_products = df["product_id"].value_counts().head(10)
+        all_products = df["product_id"].unique()
 
-        st.write("Top recommended products:")
-        st.write(top_products)
+        # 🔥 CHECK USER EXIST
+        known_users = data["customer_unique_id"].unique()
+
+        if user_id not in known_users:
+            st.warning("User mới → recommend theo sản phẩm phổ biến")
+
+            popular = (
+                df.groupby("product_id")["review_score"]
+                .count()
+                .sort_values(ascending=False)
+                .head(10)
+                .index
+            )
+
+            rec_df = pd.DataFrame(popular, columns=["product_id"])
+            st.write(rec_df)
+
+        else:
+            # 🔥 LOẠI SẢN PHẨM ĐÃ MUA
+            bought = df[df["customer_unique_id"] == user_id]["product_id"].unique()
+
+            candidates = [p for p in all_products if p not in bought]
+
+            preds = []
+
+            for p in candidates[:300]:
+                pred = model.predict(user_id, p)
+                preds.append((p, pred.est))
+
+            preds = sorted(preds, key=lambda x: x[1], reverse=True)[:10]
+
+            rec_df = pd.DataFrame(preds, columns=["product_id","score"])
+            st.write(rec_df)
+
 # =========================
 # FP-GROWTH
 # =========================
@@ -133,8 +174,10 @@ elif menu == "⚙️ Admin":
         st.write(new_df.head())
 
     if st.button("Retrain Model"):
-        X = df[["price","freight_value","payment_value"]].dropna()
-        y = df["review_score"].dropna()
+       data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
+
+       X = data_model[["price","freight_value","payment_value"]]
+       y = data_model["review_score"]
 
         from sklearn.linear_model import LogisticRegression
         model = LogisticRegression(max_iter=1000)
