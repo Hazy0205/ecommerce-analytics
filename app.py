@@ -16,7 +16,7 @@ st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 # =========================
 @st.cache_data
 def load_data():
-    df = pd.read_csv("cleaned_data.csv")
+    df = pd.read_csv("cleaned_data_small.csv")
     rfm = pd.read_csv("rfm_data.csv")
     return df, rfm
 
