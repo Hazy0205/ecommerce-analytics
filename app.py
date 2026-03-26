@@ -78,7 +78,7 @@ elif menu == "👥 Segmentation":
     st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# RECOMMENDATION (SURPRISE)
+# RECOMMENDATION 
 # =========================
 elif menu == "🎯 Recommendation":
     st.subheader("🎯 Smart Recommendation")
@@ -86,7 +86,6 @@ elif menu == "🎯 Recommendation":
     user_id = st.text_input("Enter Customer ID")
 
     if user_id:
-
         user_data = df[df["customer_unique_id"] == user_id]
 
         if user_data.empty:
@@ -105,7 +104,6 @@ elif menu == "🎯 Recommendation":
         else:
             st.success("Personalized recommendations")
 
-            # 🔥 USER PROFILE (quan trọng)
             user_profile = (
                 user_data.groupby("product_category_name_english")
                 .agg({
@@ -115,7 +113,6 @@ elif menu == "🎯 Recommendation":
                 .reset_index()
             )
 
-            # 🔥 PRODUCT PROFILE
             product_profile = (
                 df.groupby(["product_id","product_category_name_english"])
                 .agg({
@@ -125,57 +122,23 @@ elif menu == "🎯 Recommendation":
                 .reset_index()
             )
 
-            # 🔥 JOIN để tính score
             merged = product_profile.merge(
                 user_profile,
                 on="product_category_name_english",
                 suffixes=("_prod","_user")
             )
 
-            # 🔥 SCORE KHÁC NHAU THEO USER
             merged["score"] = (
                 merged["review_score_prod"] * 0.7 +
                 merged["review_score_user"] * 0.3
             )
 
-            # 🔥 LOẠI sản phẩm đã mua
             bought = user_data["product_id"].unique()
             merged = merged[~merged["product_id"].isin(bought)]
 
             rec = merged.sort_values(by="score", ascending=False).head(10)
 
             st.dataframe(rec[["product_id","score","price_prod"]])
-
-        # =========================
-        # USER CŨ
-        # =========================
-        else:
-            st.success("✅ Personalized recommendations")
-
-            # 🔥 Category yêu thích
-            fav_cat = (
-                user_data["product_category_name_english"]
-                .mode()[0]
-            )
-
-            st.info(f"💡 Based on your interest in: **{fav_cat}**")
-
-            # 🔥 Loại sản phẩm đã mua
-            bought = user_data["product_id"].unique()
-
-            candidates = df[
-                (df["product_category_name_english"] == fav_cat) &
-                (~df["product_id"].isin(bought))
-            ]
-
-            rec = (
-                candidates.groupby(["product_id","product_category_name_english"])
-                .agg({"review_score":"mean","price":"mean"})
-                .reset_index()
-                .sort_values(by="review_score", ascending=False)
-                .head(10)
-            )
-
             # =========================
             # UI GRID CARD
             # =========================
