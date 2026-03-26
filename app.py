@@ -83,9 +83,15 @@ elif menu == "👥 Segmentation":
 elif menu == "🎯 Recommendation":
     st.subheader("🎯 Smart Recommendation")
 
-    user_id = st.text_input("Enter Customer ID")
+    # chuẩn hóa data
+    df["customer_unique_id"] = df["customer_unique_id"].astype(str).str.strip()
+
+    user_id = st.text_input("Enter Customer ID").strip()
 
     if user_id:
+
+        st.write("User tồn tại:", user_id in df["customer_unique_id"].values)
+
         user_data = df[df["customer_unique_id"] == user_id]
 
         if user_data.empty:
@@ -104,41 +110,17 @@ elif menu == "🎯 Recommendation":
         else:
             st.success("Personalized recommendations")
 
-            user_profile = (
-                user_data.groupby("product_category_name_english")
-                .agg({
-                    "review_score":"mean",
-                    "price":"mean"
-                })
+            st.write("Số đơn của user:", len(user_data))
+
+            rec = (
+                user_data.groupby("product_id")
+                .agg({"review_score":"mean","price":"mean"})
                 .reset_index()
+                .sort_values(by="review_score", ascending=False)
+                .head(10)
             )
 
-            product_profile = (
-                df.groupby(["product_id","product_category_name_english"])
-                .agg({
-                    "review_score":"mean",
-                    "price":"mean"
-                })
-                .reset_index()
-            )
-
-            merged = product_profile.merge(
-                user_profile,
-                on="product_category_name_english",
-                suffixes=("_prod","_user")
-            )
-
-            merged["score"] = (
-                merged["review_score_prod"] * 0.7 +
-                merged["review_score_user"] * 0.3
-            )
-
-            bought = user_data["product_id"].unique()
-            merged = merged[~merged["product_id"].isin(bought)]
-
-            rec = merged.sort_values(by="score", ascending=False).head(10)
-
-            st.dataframe(rec[["product_id","score","price_prod"]])
+            st.dataframe(rec)
             # =========================
             # UI GRID CARD
             # =========================
