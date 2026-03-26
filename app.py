@@ -204,17 +204,17 @@ elif menu == "⚙️ Admin":
         new_df = pd.read_csv(file)
         st.write(new_df.head())
 
-   if st.button("Retrain Model"):
-    from sklearn.ensemble import RandomForestRegressor
+    if st.button("Retrain Model"):
+        from sklearn.ensemble import RandomForestRegressor
 
-    data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
+        data_model = df[["price", "freight_value", "payment_value", "review_score"]].dropna()
 
-    X = data_model[["price","freight_value","payment_value"]]
-    y = data_model["review_score"]
+        X = data_model[["price", "freight_value", "payment_value"]]
+        y = data_model["review_score"]
 
-    model = RandomForestRegressor(n_estimators=100)
-    model.fit(X, y)
+        model = RandomForestRegressor(n_estimators=100)
+        model.fit(X, y)
 
-    joblib.dump(model, "classifier.pkl")
+        joblib.dump(model, "classifier.pkl")
 
-    st.success("Model retrained!")
+        st.success("Model retrained!")
