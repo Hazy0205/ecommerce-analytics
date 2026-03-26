@@ -81,55 +81,102 @@ elif menu == "👥 Segmentation":
 # RECOMMENDATION (SURPRISE)
 # =========================
 elif menu == "🎯 Recommendation":
-    st.subheader("Product Recommendation (SVD)")
+    st.markdown("## 🎯 Product Recommendation")
 
-    data = df[["customer_unique_id","product_id","review_score"]].dropna()
-
-    reader = Reader(rating_scale=(1,5))
-    dataset = Dataset.load_from_df(data, reader)
-
-    trainset = dataset.build_full_trainset()
-    model = SVD()
-    model.fit(trainset)
-
-    user_id = st.text_input("Enter Customer ID")
+    # =========================
+    # INPUT USER
+    # =========================
+    user_id = st.text_input("🔍 Enter Customer ID")
 
     if user_id:
-        all_products = df["product_id"].unique()
 
-        # 🔥 CHECK USER EXIST
-        known_users = data["customer_unique_id"].unique()
+        user_data = df[df["customer_unique_id"] == user_id]
 
-        if user_id not in known_users:
-            st.warning("User mới → recommend theo sản phẩm phổ biến")
+        # =========================
+        # USER MỚI
+        # =========================
+        if user_data.empty:
+            st.warning("⚠️ New user → Showing popular products")
 
-            popular = (
-                df.groupby("product_id")["review_score"]
-                .count()
-                .sort_values(ascending=False)
+            top_products = (
+                df.groupby(["product_id", "product_category_name_english"])
+                .agg({"review_score": "count"})
+                .reset_index()
+                .sort_values(by="review_score", ascending=False)
                 .head(10)
-                .index
             )
 
-            rec_df = pd.DataFrame(popular, columns=["product_id"])
-            st.write(rec_df)
+            # UI đẹp dạng card
+            cols = st.columns(2)
 
+            for i, row in top_products.iterrows():
+                with cols[i % 2]:
+                    st.markdown(f"""
+                    <div style="
+                        padding:15px;
+                        border-radius:15px;
+                        background:#f9f9f9;
+                        margin-bottom:10px;
+                        box-shadow:0 2px 8px rgba(0,0,0,0.1);
+                    ">
+                        <h4>🛍️ {row['product_id']}</h4>
+                        <p>📦 Category: {row['product_category_name_english']}</p>
+                        <p>⭐ Popularity: {int(row['review_score'])}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
+
+        # =========================
+        # USER CŨ
+        # =========================
         else:
-            # 🔥 LOẠI SẢN PHẨM ĐÃ MUA
-            bought = df[df["customer_unique_id"] == user_id]["product_id"].unique()
+            st.success("✅ Personalized recommendations")
 
-            candidates = [p for p in all_products if p not in bought]
+            # 🔥 Category yêu thích
+            fav_cat = (
+                user_data["product_category_name_english"]
+                .mode()[0]
+            )
 
-            preds = []
+            st.info(f"💡 Based on your interest in: **{fav_cat}**")
 
-            for p in candidates[:300]:
-                pred = model.predict(user_id, p)
-                preds.append((p, pred.est))
+            # 🔥 Loại sản phẩm đã mua
+            bought = user_data["product_id"].unique()
 
-            preds = sorted(preds, key=lambda x: x[1], reverse=True)[:10]
+            candidates = df[
+                (df["product_category_name_english"] == fav_cat) &
+                (~df["product_id"].isin(bought))
+            ]
 
-            rec_df = pd.DataFrame(preds, columns=["product_id","score"])
-            st.write(rec_df)
+            rec = (
+                candidates.groupby(["product_id","product_category_name_english"])
+                .agg({"review_score":"mean","price":"mean"})
+                .reset_index()
+                .sort_values(by="review_score", ascending=False)
+                .head(10)
+            )
+
+            # =========================
+            # UI GRID CARD
+            # =========================
+            cols = st.columns(2)
+
+            for i, row in rec.iterrows():
+                with cols[i % 2]:
+                    st.markdown(f"""
+                    <div style="
+                        padding:15px;
+                        border-radius:15px;
+                        background:white;
+                        margin-bottom:15px;
+                        box-shadow:0 4px 12px rgba(0,0,0,0.1);
+                        border-left:5px solid #4CAF50;
+                    ">
+                        <h4>🛍️ {row['product_id']}</h4>
+                        <p>📦 {row['product_category_name_english']}</p>
+                        <p>💰 Price: ${row['price']:.2f}</p>
+                        <p>⭐ Rating: {row['review_score']:.2f}</p>
+                    </div>
+                    """, unsafe_allow_html=True)
 
 # =========================
 # FP-GROWTH
