@@ -179,7 +179,7 @@ elif menu == "⚙️ Admin":
        X = data_model[["price","freight_value","payment_value"]]
        y = data_model["review_score"]
 
-        from sklearn.linear_model import LogisticRegression
+       from sklearn.linear_model import LogisticRegression
         model = LogisticRegression(max_iter=1000)
         model.fit(X, y)
 
