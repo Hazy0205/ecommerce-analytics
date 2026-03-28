@@ -180,11 +180,6 @@ elif menu == "🔮 Prediction":
 elif menu == "⚙️ Admin":
     st.subheader("Admin Panel")
 
-    file = st.file_uploader("Upload new dataset")
-
-    elif menu == "⚙️ Admin":
-    st.subheader("Admin Panel")
-
     file = st.file_uploader("Upload dataset (.csv or .xlsx)")
 
     if file is not None:
