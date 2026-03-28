@@ -159,7 +159,8 @@ streamlit run app.py
 ## 🌐 Demo
 
 👉 Streamlit App: *https://ecommerce-analytics-bigdata.streamlit.app/*
-👉 GitHub Repo: *(add your link here)*
+
+👉 GitHub Repo: *https://github.com/Hazy0205/ecommerce-analytics.git*
 
 ---
 
