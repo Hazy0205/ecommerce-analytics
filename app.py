@@ -169,23 +169,39 @@ elif menu == "🔮 Prediction":
 # ADMIN
 # =========================
 elif menu == "⚙️ Admin":
-    st.subheader("Admin Panel")
+    st.subheader("⚙️ Admin Panel")
 
-    file = st.file_uploader("Upload new dataset")
-
-    if file:
-        new_df = pd.read_csv(file)
-        st.write(new_df.head())
+    st.info("Dataset đã được load sẵn từ GitHub")
 
     if st.button("Retrain Model"):
-        data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
+        try:
+            # 🔥 load lại data gốc
+            df = pd.read_csv("cleaned_data_small.csv")
 
-        X = data_model[["price","freight_value","payment_value"]]
-        y = data_model["review_score"]
+            # đảm bảo đúng cột
+            required_cols = ["price","freight_value","payment_value","review_score"]
 
-        from sklearn.linear_model import LogisticRegression
-        model = LogisticRegression(max_iter=1000)
-        model.fit(X, y)
+            if not all(col in df.columns for col in required_cols):
+                st.error("Dataset thiếu cột cần thiết!")
+                st.stop()
 
-        joblib.dump(model, "classifier.pkl")
-        st.success("Model retrained!")
+            data_model = df[required_cols].dropna()
+
+            X = data_model[["price","freight_value","payment_value"]]
+            y = data_model["review_score"]
+
+            # 🔥 dùng model tốt hơn Logistic
+            from sklearn.ensemble import RandomForestRegressor
+            model = RandomForestRegressor(n_estimators=100)
+
+            model.fit(X, y)
+
+            joblib.dump(model, "classifier.pkl")
+
+            st.success("✅ Model retrained thành công!")
+
+            # show thêm info cho đẹp
+            st.write("Số dòng train:", len(data_model))
+
+        except Exception as e:
+            st.error(f"Lỗi: {e}")
