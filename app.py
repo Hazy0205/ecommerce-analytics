@@ -5,7 +5,7 @@ import joblib
 import plotly.express as px
 
 from sklearn.cluster import KMeans
-from surprise import SVD, Dataset, Reader
+from sklearn.ensemble import RandomForestRegressor
 
 # =========================
 # CONFIG
@@ -15,7 +15,6 @@ st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 # =========================
 # LOAD DATA
 # =========================
-@st.cache_data
 def load_data():
     df = pd.read_csv("cleaned_data_small.csv")
     rfm = pd.read_csv("rfm_data.csv")
@@ -82,56 +81,60 @@ elif menu == "👥 Segmentation":
 # RECOMMENDATION (SURPRISE)
 # =========================
 elif menu == "🎯 Recommendation":
-    st.subheader("Product Recommendation (SVD)")
-
-    data = df[["customer_unique_id","product_id","review_score"]].dropna()
-
-    reader = Reader(rating_scale=(1,5))
-    dataset = Dataset.load_from_df(data, reader)
-
-    trainset = dataset.build_full_trainset()
-    model = SVD()
-    model.fit(trainset)
+    st.subheader("🎯 Smart Recommendation")
 
     user_id = st.text_input("Enter Customer ID")
 
     if user_id:
-        all_products = df["product_id"].unique()
+        user_id = user_id.strip()
 
-        # 🔥 CHECK USER EXIST
-        known_users = data["customer_unique_id"].unique()
+        user_data = df[df["customer_unique_id"] == user_id]
 
-        if user_id not in known_users:
-            st.warning("User mới → recommend theo sản phẩm phổ biến")
+        if user_data.empty:
+            st.warning("User mới → recommend phổ biến")
 
-            popular = (
-                df.groupby("product_id")["review_score"]
-                .count()
-                .sort_values(ascending=False)
+            rec = (
+                df.groupby(["product_id","product_category_name_english"])
+                .agg({"review_score":"count","price":"mean"})
+                .reset_index()
+                .sort_values(by="review_score", ascending=False)
                 .head(10)
-                .index
             )
 
-            rec_df = pd.DataFrame(popular, columns=["product_id"])
-            st.write(rec_df)
+            st.dataframe(rec)
 
         else:
-            # 🔥 LOẠI SẢN PHẨM ĐÃ MUA
-            bought = df[df["customer_unique_id"] == user_id]["product_id"].unique()
+            st.success("Personalized recommendations")
 
-            candidates = [p for p in all_products if p not in bought]
+            user_profile = (
+                user_data.groupby("product_category_name_english")
+                .agg({"review_score":"mean"})
+                .reset_index()
+            )
 
-            preds = []
+            product_profile = (
+                df.groupby(["product_id","product_category_name_english"])
+                .agg({"review_score":"mean","price":"mean"})
+                .reset_index()
+            )
 
-            for p in candidates[:300]:
-                pred = model.predict(user_id, p)
-                preds.append((p, pred.est))
+            merged = product_profile.merge(
+                user_profile,
+                on="product_category_name_english",
+                suffixes=("_prod","_user")
+            )
 
-            preds = sorted(preds, key=lambda x: x[1], reverse=True)[:10]
+            merged["score"] = (
+                merged["review_score_prod"] * 0.7 +
+                merged["review_score_user"] * 0.3
+            )
 
-            rec_df = pd.DataFrame(preds, columns=["product_id","score"])
-            st.write(rec_df)
+            bought = user_data["product_id"].unique()
+            merged = merged[~merged["product_id"].isin(bought)]
 
+            rec = merged.sort_values(by="score", ascending=False).head(10)
+
+            st.dataframe(rec[["product_id","score","price_prod"]])
 # =========================
 # FP-GROWTH
 # =========================
