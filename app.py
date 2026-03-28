@@ -182,9 +182,26 @@ elif menu == "⚙️ Admin":
 
     file = st.file_uploader("Upload new dataset")
 
+    elif menu == "⚙️ Admin":
+    st.subheader("Admin Panel")
+
+    file = st.file_uploader("Upload dataset (.csv or .xlsx)")
+
     if file is not None:
-        new_df = pd.read_csv(file)
-        st.write(new_df.head())
+        try:
+            if file.name.endswith(".csv"):
+                new_df = pd.read_csv(file)
+            elif file.name.endswith(".xlsx"):
+                new_df = pd.read_excel(file)
+            else:
+                st.error("Unsupported file format")
+                st.stop()
+
+            st.success("Upload thành công!")
+            st.write(new_df.head())
+
+        except Exception as e:
+            st.error(f"Lỗi đọc file: {e}")
 
     if st.button("Retrain Model"):
         from sklearn.ensemble import RandomForestRegressor
