@@ -1,3 +1,4 @@
+%%writefile app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
@@ -5,6 +6,7 @@ import joblib
 import plotly.express as px
 
 from sklearn.cluster import KMeans
+from surprise import SVD, Dataset, Reader
 
 # =========================
 # CONFIG
@@ -18,10 +20,6 @@ st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 def load_data():
     df = pd.read_csv("cleaned_data_small.csv")
     rfm = pd.read_csv("rfm_data.csv")
-
-    # 🔥 FIX STRING
-    df["customer_unique_id"] = df["customer_unique_id"].astype(str).str.strip()
-
     return df, rfm
 
 df, rfm = load_data()
@@ -33,11 +31,11 @@ st.title("🛒 E-commerce Analytics Dashboard")
 # =========================
 menu = st.sidebar.radio(
     "Menu",
-    ["📊 Dashboard", "👥 Segmentation", "🎯 Recommendation", "🔮 Prediction", "⚙️ Admin"]
+    ["📊 Dashboard", "👥 Segmentation", "🎯 Recommendation", "🛍️ Market Basket", "🔮 Prediction", "⚙️ Admin"]
 )
 
 # =========================
-# DASHBOARD
+# DASHBOARD (PLOTLY)
 # =========================
 if menu == "📊 Dashboard":
     st.subheader("Business Overview")
@@ -47,79 +45,108 @@ if menu == "📊 Dashboard":
     col2.metric("Customers", df["customer_unique_id"].nunique())
     col3.metric("Revenue", f"${df['payment_value'].sum():,.0f}")
 
+    st.divider()
+
+    # Revenue by category
+    top_cat = df.groupby("product_category_name_english")["payment_value"].sum().sort_values(ascending=False).head(10)
+    fig = px.bar(top_cat, title="Top Categories by Revenue")
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Orders over time
+    df["order_purchase_timestamp"] = pd.to_datetime(df["order_purchase_timestamp"])
+    time_df = df.groupby(df["order_purchase_timestamp"].dt.date)["order_id"].count()
+
+    fig2 = px.line(time_df, title="Orders Over Time")
+    st.plotly_chart(fig2, use_container_width=True)
+
 # =========================
-# SEGMENTATION
+# SEGMENTATION (PLOTLY)
 # =========================
 elif menu == "👥 Segmentation":
-    st.subheader("Customer Segmentation")
+    st.subheader("Customer Segmentation (RFM)")
 
-    k = st.slider("Clusters", 2, 6, 3)
+    k = st.slider("Number of clusters", 2, 8, 4)
+
     model = KMeans(n_clusters=k)
     rfm["cluster"] = model.fit_predict(rfm[["Recency","Frequency","Monetary"]])
 
-    st.scatter_chart(rfm, x="Recency", y="Monetary")
+    fig = px.scatter(
+        rfm,
+        x="Recency",
+        y="Monetary",
+        color=rfm["cluster"].astype(str),
+        title="Customer Segments"
+    )
+    st.plotly_chart(fig, use_container_width=True)
 
 # =========================
-# RECOMMENDATION (FIX)
+# RECOMMENDATION (SURPRISE)
 # =========================
 elif menu == "🎯 Recommendation":
-    st.subheader("🎯 Smart Recommendation")
+    st.subheader("Product Recommendation (SVD)")
+
+    data = df[["customer_unique_id","product_id","review_score"]].dropna()
+
+    reader = Reader(rating_scale=(1,5))
+    dataset = Dataset.load_from_df(data, reader)
+
+    trainset = dataset.build_full_trainset()
+    model = SVD()
+    model.fit(trainset)
 
     user_id = st.text_input("Enter Customer ID")
 
     if user_id:
-        user_id = user_id.strip()
+        all_products = df["product_id"].unique()
 
-        user_data = df[df["customer_unique_id"] == user_id]
+        # 🔥 CHECK USER EXIST
+        known_users = data["customer_unique_id"].unique()
 
-        if user_data.empty:
-            st.warning("User mới → recommend phổ biến")
+        if user_id not in known_users:
+            st.warning("User mới → recommend theo sản phẩm phổ biến")
 
-            rec = (
-                df.groupby(["product_id","product_category_name_english"])
-                .agg({"review_score":"count","price":"mean"})
-                .reset_index()
-                .sort_values(by="review_score", ascending=False)
+            popular = (
+                df.groupby("product_id")["review_score"]
+                .count()
+                .sort_values(ascending=False)
                 .head(10)
+                .index
             )
 
-            st.dataframe(rec)
+            rec_df = pd.DataFrame(popular, columns=["product_id"])
+            st.write(rec_df)
 
         else:
-            st.success("Personalized recommendations")
+            # 🔥 LOẠI SẢN PHẨM ĐÃ MUA
+            bought = df[df["customer_unique_id"] == user_id]["product_id"].unique()
 
-            user_profile = (
-                user_data.groupby("product_category_name_english")
-                .agg({"review_score":"mean"})
-                .reset_index()
-            )
+            candidates = [p for p in all_products if p not in bought]
 
-            product_profile = (
-                df.groupby(["product_id","product_category_name_english"])
-                .agg({"review_score":"mean","price":"mean"})
-                .reset_index()
-            )
+            preds = []
 
-            merged = product_profile.merge(
-                user_profile,
-                on="product_category_name_english",
-                suffixes=("_prod","_user")
-            )
+            for p in candidates[:300]:
+                pred = model.predict(user_id, p)
+                preds.append((p, pred.est))
 
-            merged["score"] = (
-                merged["review_score_prod"] * 0.7 +
-                merged["review_score_user"] * 0.3
-            )
+            preds = sorted(preds, key=lambda x: x[1], reverse=True)[:10]
 
-            bought = user_data["product_id"].unique()
-            merged = merged[~merged["product_id"].isin(bought)]
-
-            rec = merged.sort_values(by="score", ascending=False).head(10)
-
-            st.dataframe(rec[["product_id","score","price_prod"]])
+            rec_df = pd.DataFrame(preds, columns=["product_id","score"])
+            st.write(rec_df)
 
 # =========================
-# PREDICTION (FIX)
+# FP-GROWTH
+# =========================
+elif menu == "🛍️ Market Basket":
+    st.subheader("Association Rules")
+
+    try:
+        rules = pd.read_csv("rules.csv")
+        st.dataframe(rules.sort_values(by="lift", ascending=False).head(20))
+    except:
+        st.warning("Run FP-Growth first to generate rules.csv")
+
+# =========================
+# PREDICTION
 # =========================
 elif menu == "🔮 Prediction":
     st.subheader("Predict Review Score")
@@ -132,45 +159,31 @@ elif menu == "🔮 Prediction":
         try:
             model = joblib.load("classifier.pkl")
             pred = model.predict([[price, freight, payment]])
-            st.success(f"Predicted Score: {round(pred[0],2)}")
+            st.success(f"Predicted Score: {pred[0]}")
         except:
-            st.error("Train model first")
+            st.error("Train model first in Admin tab")
 
 # =========================
-# ADMIN (FIX)
+# ADMIN
 # =========================
 elif menu == "⚙️ Admin":
     st.subheader("Admin Panel")
 
-    file = st.file_uploader("Upload dataset (.csv or .xlsx)")
+    file = st.file_uploader("Upload new dataset")
 
-    if file is not None:
-        try:
-            if file.name.endswith(".csv"):
-                new_df = pd.read_csv(file)
-            elif file.name.endswith(".xlsx"):
-                new_df = pd.read_excel(file)
-            else:
-                st.error("Unsupported file")
-                st.stop()
-
-            st.success("Upload thành công")
-            st.write(new_df.head())
-
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+    if file:
+        new_df = pd.read_csv(file)
+        st.write(new_df.head())
 
     if st.button("Retrain Model"):
-        from sklearn.ensemble import RandomForestRegressor
-
         data_model = df[["price","freight_value","payment_value","review_score"]].dropna()
 
         X = data_model[["price","freight_value","payment_value"]]
         y = data_model["review_score"]
 
-        model = RandomForestRegressor(n_estimators=100)
+        from sklearn.linear_model import LogisticRegression
+        model = LogisticRegression(max_iter=1000)
         model.fit(X, y)
 
         joblib.dump(model, "classifier.pkl")
-
         st.success("Model retrained!")
