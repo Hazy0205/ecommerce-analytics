@@ -6,37 +6,44 @@ import plotly.express as px
 
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
+from sklearn.metrics import mean_squared_error, mean_absolute_error
 
-# =========================
-# CONFIG
-# =========================
 st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 
 # =========================
 # LOAD DATA
 # =========================
-def load_data():
-    df = pd.read_csv("cleaned_data_small.csv")
-    rfm = pd.read_csv("rfm_data.csv")
-    return df, rfm
-
-df, rfm = load_data()
-
-st.title("🛒 E-commerce Analytics Dashboard")
+def load_data(file=None):
+    if file:
+        return pd.read_csv(file)
+    else:
+        return pd.read_csv("cleaned_data_small.csv")
 
 # =========================
 # SIDEBAR
 # =========================
 menu = st.sidebar.radio(
     "Menu",
-    ["📊 Dashboard", "👥 Segmentation", "🎯 Recommendation", "🛍️ Market Basket", "🔮 Prediction", "⚙️ Admin"]
+    [
+        "📊 Dashboard",
+        "👥 Segmentation",
+        "🎯 Recommendation",
+        "🛍️ Market Basket",
+        "🔮 Prediction",
+        "⚙️ Admin",
+    ],
 )
 
 # =========================
-# DASHBOARD (PLOTLY)
+# GLOBAL DATA
+# =========================
+df = load_data()
+
+# =========================
+# DASHBOARD
 # =========================
 if menu == "📊 Dashboard":
-    st.subheader("Business Overview")
+    st.title("📊 Dashboard")
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Orders", df["order_id"].nunique())
@@ -45,163 +52,149 @@ if menu == "📊 Dashboard":
 
     st.divider()
 
-    # Revenue by category
-    top_cat = df.groupby("product_category_name_english")["payment_value"].sum().sort_values(ascending=False).head(10)
-    fig = px.bar(top_cat, title="Top Categories by Revenue")
-    st.plotly_chart(fig, use_container_width=True)
+    # Revenue chart
+    top_cat = (
+        df.groupby("product_category_name_english")["payment_value"]
+        .sum()
+        .sort_values(ascending=False)
+        .head(10)
+    )
+    st.plotly_chart(px.bar(top_cat, title="Top Categories"), use_container_width=True)
 
-    # Orders over time
+    # Time series
     df["order_purchase_timestamp"] = pd.to_datetime(df["order_purchase_timestamp"])
     time_df = df.groupby(df["order_purchase_timestamp"].dt.date)["order_id"].count()
+    st.plotly_chart(px.line(time_df, title="Orders Over Time"), use_container_width=True)
 
-    fig2 = px.line(time_df, title="Orders Over Time")
-    st.plotly_chart(fig2, use_container_width=True)
+    # Clustering preview
+    st.subheader("Customer Clustering Preview")
+    rfm = df.groupby("customer_unique_id").agg({
+        "order_purchase_timestamp": "max",
+        "order_id": "count",
+        "payment_value": "sum"
+    }).reset_index()
+
+    rfm.columns = ["customer_id","Recency","Frequency","Monetary"]
+
+    kmeans = KMeans(n_clusters=4)
+    rfm["cluster"] = kmeans.fit_predict(rfm[["Recency","Frequency","Monetary"]])
+
+    st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
 
 # =========================
-# SEGMENTATION (PLOTLY)
+# SEGMENTATION
 # =========================
 elif menu == "👥 Segmentation":
-    st.subheader("Customer Segmentation (RFM)")
+    st.title("👥 Customer Segmentation")
 
-    k = st.slider("Number of clusters", 2, 8, 4)
+    file = st.file_uploader("Upload CSV", type=["csv"])
+    data = load_data(file) if file else df
 
+    rfm = data.groupby("customer_unique_id").agg({
+        "order_purchase_timestamp": "max",
+        "order_id": "count",
+        "payment_value": "sum"
+    }).reset_index()
+
+    rfm.columns = ["customer_id","Recency","Frequency","Monetary"]
+
+    k = st.slider("Clusters", 2, 8, 4)
     model = KMeans(n_clusters=k)
     rfm["cluster"] = model.fit_predict(rfm[["Recency","Frequency","Monetary"]])
 
-    fig = px.scatter(
-        rfm,
-        x="Recency",
-        y="Monetary",
-        color=rfm["cluster"].astype(str),
-        title="Customer Segments"
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
+
+    st.subheader("Cluster Profile")
+    st.dataframe(rfm.groupby("cluster").mean())
 
 # =========================
-# RECOMMENDATION (SURPRISE)
+# RECOMMENDATION
 # =========================
 elif menu == "🎯 Recommendation":
-    st.subheader("🎯 Smart Recommendation")
+    st.title("🎯 Recommendation")
 
-    user_id = st.text_input("Enter Customer ID")
+    user_id = st.text_input("Customer ID")
+    product_id = st.text_input("Product ID")
 
     if user_id:
-        user_id = user_id.strip()
-
         user_data = df[df["customer_unique_id"] == user_id]
 
         if user_data.empty:
-            st.warning("User mới → recommend phổ biến")
-
-            rec = (
-                df.groupby(["product_id","product_category_name_english"])
-                .agg({"review_score":"count","price":"mean"})
-                .reset_index()
-                .sort_values(by="review_score", ascending=False)
-                .head(10)
-            )
-
+            rec = df.groupby("product_id")["review_score"].count().sort_values(ascending=False).head(10)
             st.dataframe(rec)
-
         else:
-            st.success("Personalized recommendations")
+            profile = user_data.groupby("product_category_name_english")["review_score"].mean()
+            prod = df.groupby(["product_id","product_category_name_english"])["review_score"].mean().reset_index()
 
-            user_profile = (
-                user_data.groupby("product_category_name_english")
-                .agg({"review_score":"mean"})
-                .reset_index()
-            )
+            merged = prod.merge(profile, on="product_category_name_english", suffixes=("_prod","_user"))
+            merged["score"] = merged["review_score_prod"] * 0.7 + merged["review_score_user"] * 0.3
 
-            product_profile = (
-                df.groupby(["product_id","product_category_name_english"])
-                .agg({"review_score":"mean","price":"mean"})
-                .reset_index()
-            )
+            st.dataframe(merged.sort_values("score", ascending=False).head(10))
 
-            merged = product_profile.merge(
-                user_profile,
-                on="product_category_name_english",
-                suffixes=("_prod","_user")
-            )
+    if product_id:
+        similar = df[df["product_id"] == product_id]["product_category_name_english"].iloc[0]
+        rec = df[df["product_category_name_english"] == similar]
+        st.dataframe(rec.head(10))
 
-            merged["score"] = (
-                merged["review_score_prod"] * 0.7 +
-                merged["review_score_user"] * 0.3
-            )
-
-            bought = user_data["product_id"].unique()
-            merged = merged[~merged["product_id"].isin(bought)]
-
-            rec = merged.sort_values(by="score", ascending=False).head(10)
-
-            st.dataframe(rec[["product_id","score","price_prod"]])
 # =========================
-# FP-GROWTH
+# MARKET BASKET
 # =========================
 elif menu == "🛍️ Market Basket":
-    st.subheader("Association Rules")
+    st.title("Market Basket Analysis")
 
     try:
         rules = pd.read_csv("rules.csv")
-        st.dataframe(rules.sort_values(by="lift", ascending=False).head(20))
+
+        min_lift = st.slider("Min Lift", 0.0, 10.0, 1.0)
+        filtered = rules[rules["lift"] >= min_lift]
+
+        st.dataframe(filtered.sort_values("lift", ascending=False).head(20))
+        st.plotly_chart(px.scatter(filtered, x="support", y="confidence", size="lift"))
+
     except:
-        st.warning("Run FP-Growth first to generate rules.csv")
+        st.warning("Run FP-Growth first")
 
 # =========================
 # PREDICTION
 # =========================
 elif menu == "🔮 Prediction":
-    st.subheader("Predict Review Score")
+    st.title("Prediction")
 
-    price = st.number_input("Price", 0.0)
-    freight = st.number_input("Freight", 0.0)
-    payment = st.number_input("Payment", 0.0)
+    price = st.number_input("Price")
+    freight = st.number_input("Freight")
+    payment = st.number_input("Payment")
 
     if st.button("Predict"):
-        try:
-            model = joblib.load("classifier.pkl")
-            pred = model.predict([[price, freight, payment]])
-            st.success(f"Predicted Score: {pred[0]}")
-        except:
-            st.error("Train model first in Admin tab")
+        model = joblib.load("classifier.pkl")
+        pred = model.predict([[price, freight, payment]])
+        st.success(f"Prediction: {pred[0]}")
 
 # =========================
 # ADMIN
 # =========================
 elif menu == "⚙️ Admin":
-    st.subheader("⚙️ Admin Panel")
+    st.title("Admin Panel")
 
-    st.info("Dataset đã được load sẵn từ GitHub")
+    file = st.file_uploader("Upload new dataset", type=["csv"])
 
-    if st.button("Retrain Model"):
-        try:
-            # 🔥 load lại data gốc
-            df = pd.read_csv("cleaned_data_small.csv")
+    if file:
+        new_df = pd.read_csv(file)
+        st.success("Uploaded!")
+        st.dataframe(new_df.head())
 
-            # đảm bảo đúng cột
-            required_cols = ["price","freight_value","payment_value","review_score"]
+        if st.button("Retrain Model"):
+            X = new_df[["price","freight_value","payment_value"]]
+            y = new_df["review_score"]
 
-            if not all(col in df.columns for col in required_cols):
-                st.error("Dataset thiếu cột cần thiết!")
-                st.stop()
-
-            data_model = df[required_cols].dropna()
-
-            X = data_model[["price","freight_value","payment_value"]]
-            y = data_model["review_score"]
-
-            # 🔥 dùng model tốt hơn Logistic
-            from sklearn.ensemble import RandomForestRegressor
-            model = RandomForestRegressor(n_estimators=100)
-
+            model = RandomForestRegressor()
             model.fit(X, y)
+
+            pred = model.predict(X)
+            rmse = np.sqrt(mean_squared_error(y, pred))
+            mae = mean_absolute_error(y, pred)
 
             joblib.dump(model, "classifier.pkl")
 
-            st.success("✅ Model retrained thành công!")
-
-            # show thêm info cho đẹp
-            st.write("Số dòng train:", len(data_model))
-
-        except Exception as e:
-            st.error(f"Lỗi: {e}")
+            st.success("Model retrained")
+            st.write("RMSE:", rmse)
+            st.write("MAE:", mae)
