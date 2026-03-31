@@ -105,7 +105,34 @@ elif menu == "👥 Segmentation":
     model = KMeans(n_clusters=4, random_state=42)
     rfm["cluster"] = model.fit_predict(X)
 
-    st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"))
+    fig = px.scatter(
+        rfm,
+        x="Frequency",
+        y="Monetary",
+        color="cluster",
+        color_discrete_sequence=px.colors.qualitative.Bold,
+        hover_data=["Recency","Frequency","Monetary"],
+    )
+
+    fig.update_traces(marker=dict(size=10, opacity=0.85, line=dict(width=1, color='white')))
+
+    fig.update_layout(
+        template="plotly_white",
+        title="Customer Segmentation (Power BI Style)",
+        title_x=0.3,
+        font=dict(size=13),
+        legend_title="Cluster",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+        margin=dict(l=20, r=20, t=50, b=20)
+    )
+
+    st.plotly_chart(fig, use_container_width=True)
 
     st.dataframe(rfm.groupby("cluster")[["Recency","Frequency","Monetary"]].mean())
 
