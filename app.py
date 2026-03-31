@@ -98,7 +98,77 @@ if menu == "📊 Dashboard":
     st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
 
 # =========================
-# SEGMENTATION
+# SEGMENTATION (ADVANCED)
+# =========================
+elif menu == "👥 Segmentation":
+    st.title("👥 Customer Segmentation")
+
+    file = st.file_uploader("Upload CSV (Raw hoặc RFM)", type=["csv"])
+    data = load_data(file) if file else df
+
+    st.write("Columns detected:", list(data.columns))
+
+    # Detect RFM or Raw
+    if set(["Recency","Frequency","Monetary"]).issubset(data.columns):
+        st.success("Detected RFM dataset")
+        rfm = data.copy()
+    else:
+        st.info("Raw dataset → auto create RFM")
+        rfm = create_rfm(data)
+
+    # Slider cluster
+    k = st.slider("Number of clusters", 2, 8, 4)
+
+    # Scale + cluster
+    scaler = StandardScaler()
+    X = scaler.fit_transform(rfm[["Recency","Frequency","Monetary"]])
+
+    model = KMeans(n_clusters=k, random_state=42)
+    rfm["cluster"] = model.fit_predict(X)
+
+    # Visualization
+    col1, col2 = st.columns(2)
+
+    with col1:
+        st.subheader("Scatter Plot")
+        st.plotly_chart(
+            px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"),
+            use_container_width=True
+        )
+
+    with col2:
+        st.subheader("Cluster Distribution")
+        st.plotly_chart(
+            px.histogram(rfm, x="cluster", title="Customers per Cluster"),
+            use_container_width=True
+        )
+
+    # Cluster profile
+    st.subheader("📊 Cluster Profile")
+    numeric_cols = ["Recency","Frequency","Monetary"]
+    profile = rfm.groupby("cluster")[numeric_cols].mean()
+    st.dataframe(profile)
+
+    # Label clusters (rule-based)
+    def label_cluster(row):
+        if row["Monetary"] > profile["Monetary"].mean():
+            return "💎 High Value"
+        elif row["Frequency"] > profile["Frequency"].mean():
+            return "🛍️ Loyal"
+        elif row["Recency"] > profile["Recency"].mean():
+            return "⚠️ Churn Risk"
+        else:
+            return "🙂 Normal"
+
+    rfm["segment_name"] = rfm.apply(label_cluster, axis=1)
+
+    st.subheader("🏷️ Segment Labeling")
+    st.dataframe(rfm[["customer_id","cluster","segment_name"]].head(20))
+
+    # Download option
+    csv = rfm.to_csv(index=False).encode("utf-8")
+    st.download_button("Download Segmentation Result", csv, "segmentation.csv", "text/csv")
+
 # =========================
 elif menu == "👥 Segmentation":
     st.title("👥 Customer Segmentation")
