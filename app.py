@@ -7,6 +7,7 @@ import plotly.express as px
 from sklearn.cluster import KMeans
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.metrics import mean_squared_error, mean_absolute_error
+from sklearn.preprocessing import StandardScaler
 
 st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 
@@ -16,8 +17,32 @@ st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 def load_data(file=None):
     if file:
         return pd.read_csv(file)
-    else:
-        return pd.read_csv("cleaned_data_small.csv")
+    return pd.read_csv("cleaned_data_small.csv")
+
+# =========================
+# RFM FUNCTION (CLEAN + SAFE)
+# =========================
+def create_rfm(data):
+    rfm = data.groupby("customer_unique_id").agg({
+        "order_purchase_timestamp": "max",
+        "order_id": "count",
+        "payment_value": "sum"
+    }).reset_index()
+
+    rfm.columns = ["customer_id","Recency","Frequency","Monetary"]
+
+    # Convert Recency
+    rfm["Recency"] = (pd.to_datetime("today") - pd.to_datetime(rfm["Recency"], errors='coerce')).dt.days
+
+    # Convert numeric
+    for col in ["Recency","Frequency","Monetary"]:
+        rfm[col] = pd.to_numeric(rfm[col], errors="coerce")
+
+    # Clean data
+    rfm = rfm.replace([np.inf, -np.inf], np.nan)
+    rfm = rfm.dropna(subset=["Recency","Frequency","Monetary"])
+
+    return rfm
 
 # =========================
 # SIDEBAR
@@ -35,7 +60,7 @@ menu = st.sidebar.radio(
 )
 
 # =========================
-# GLOBAL DATA
+# DATA
 # =========================
 df = load_data()
 
@@ -52,32 +77,23 @@ if menu == "📊 Dashboard":
 
     st.divider()
 
-    # Revenue chart
-    top_cat = (
-        df.groupby("product_category_name_english")["payment_value"]
-        .sum()
-        .sort_values(ascending=False)
-        .head(10)
-    )
+    # Charts
+    top_cat = df.groupby("product_category_name_english")["payment_value"].sum().sort_values(ascending=False).head(10)
     st.plotly_chart(px.bar(top_cat, title="Top Categories"), use_container_width=True)
 
-    # Time series
-    df["order_purchase_timestamp"] = pd.to_datetime(df["order_purchase_timestamp"])
+    df["order_purchase_timestamp"] = pd.to_datetime(df["order_purchase_timestamp"], errors="coerce")
     time_df = df.groupby(df["order_purchase_timestamp"].dt.date)["order_id"].count()
     st.plotly_chart(px.line(time_df, title="Orders Over Time"), use_container_width=True)
 
-    # Clustering preview
+    # Clustering
     st.subheader("Customer Clustering Preview")
-    rfm = df.groupby("customer_unique_id").agg({
-        "order_purchase_timestamp": "max",
-        "order_id": "count",
-        "payment_value": "sum"
-    }).reset_index()
+    rfm = create_rfm(df)
 
-    rfm.columns = ["customer_id","Recency","Frequency","Monetary"]
+    scaler = StandardScaler()
+    X = scaler.fit_transform(rfm[["Recency","Frequency","Monetary"]])
 
-    kmeans = KMeans(n_clusters=4)
-    rfm["cluster"] = kmeans.fit_predict(rfm[["Recency","Frequency","Monetary"]])
+    model = KMeans(n_clusters=4, random_state=42)
+    rfm["cluster"] = model.fit_predict(X)
 
     st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
 
@@ -90,17 +106,15 @@ elif menu == "👥 Segmentation":
     file = st.file_uploader("Upload CSV", type=["csv"])
     data = load_data(file) if file else df
 
-    rfm = data.groupby("customer_unique_id").agg({
-        "order_purchase_timestamp": "max",
-        "order_id": "count",
-        "payment_value": "sum"
-    }).reset_index()
-
-    rfm.columns = ["customer_id","Recency","Frequency","Monetary"]
+    rfm = create_rfm(data)
 
     k = st.slider("Clusters", 2, 8, 4)
-    model = KMeans(n_clusters=k)
-    rfm["cluster"] = model.fit_predict(rfm[["Recency","Frequency","Monetary"]])
+
+    scaler = StandardScaler()
+    X = scaler.fit_transform(rfm[["Recency","Frequency","Monetary"]])
+
+    model = KMeans(n_clusters=k, random_state=42)
+    rfm["cluster"] = model.fit_predict(X)
 
     st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
 
@@ -120,6 +134,7 @@ elif menu == "🎯 Recommendation":
         user_data = df[df["customer_unique_id"] == user_id]
 
         if user_data.empty:
+            st.warning("Cold start → recommend popular")
             rec = df.groupby("product_id")["review_score"].count().sort_values(ascending=False).head(10)
             st.dataframe(rec)
         else:
@@ -132,9 +147,12 @@ elif menu == "🎯 Recommendation":
             st.dataframe(merged.sort_values("score", ascending=False).head(10))
 
     if product_id:
-        similar = df[df["product_id"] == product_id]["product_category_name_english"].iloc[0]
-        rec = df[df["product_category_name_english"] == similar]
-        st.dataframe(rec.head(10))
+        try:
+            category = df[df["product_id"] == product_id]["product_category_name_english"].iloc[0]
+            rec = df[df["product_category_name_english"] == category]
+            st.dataframe(rec.head(10))
+        except:
+            st.error("Product not found")
 
 # =========================
 # MARKET BASKET
@@ -160,14 +178,17 @@ elif menu == "🛍️ Market Basket":
 elif menu == "🔮 Prediction":
     st.title("Prediction")
 
-    price = st.number_input("Price")
-    freight = st.number_input("Freight")
-    payment = st.number_input("Payment")
+    price = st.number_input("Price", min_value=0.0)
+    freight = st.number_input("Freight", min_value=0.0)
+    payment = st.number_input("Payment", min_value=0.0)
 
     if st.button("Predict"):
-        model = joblib.load("classifier.pkl")
-        pred = model.predict([[price, freight, payment]])
-        st.success(f"Prediction: {pred[0]}")
+        try:
+            model = joblib.load("classifier.pkl")
+            pred = model.predict([[price, freight, payment]])
+            st.success(f"Prediction: {pred[0]}")
+        except:
+            st.error("Train model in Admin tab first")
 
 # =========================
 # ADMIN
@@ -183,18 +204,25 @@ elif menu == "⚙️ Admin":
         st.dataframe(new_df.head())
 
         if st.button("Retrain Model"):
-            X = new_df[["price","freight_value","payment_value"]]
-            y = new_df["review_score"]
+            try:
+                X = new_df[["price","freight_value","payment_value"]]
+                y = new_df["review_score"]
 
-            model = RandomForestRegressor()
-            model.fit(X, y)
+                X = X.apply(pd.to_numeric, errors="coerce").dropna()
+                y = y.loc[X.index]
 
-            pred = model.predict(X)
-            rmse = np.sqrt(mean_squared_error(y, pred))
-            mae = mean_absolute_error(y, pred)
+                model = RandomForestRegressor(n_estimators=100, random_state=42)
+                model.fit(X, y)
 
-            joblib.dump(model, "classifier.pkl")
+                pred = model.predict(X)
+                rmse = np.sqrt(mean_squared_error(y, pred))
+                mae = mean_absolute_error(y, pred)
 
-            st.success("Model retrained")
-            st.write("RMSE:", rmse)
-            st.write("MAE:", mae)
+                joblib.dump(model, "classifier.pkl")
+
+                st.success("Model retrained")
+                st.write("RMSE:", rmse)
+                st.write("MAE:", mae)
+
+            except Exception as e:
+                st.error(f"Error: {e}")
