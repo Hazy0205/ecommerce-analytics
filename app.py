@@ -186,7 +186,7 @@ elif menu == "👥 Segmentation":
     model = KMeans(n_clusters=k, random_state=42)
     rfm["cluster"] = model.fit_predict(X)
 
-    st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
+    st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="FDF1C9"), use_container_width=True)
 
     st.subheader("Cluster Profile")
     # Only numeric columns for mean
@@ -239,7 +239,7 @@ elif menu == "🛍️ Market Basket":
         filtered = rules[rules["lift"] >= min_lift]
 
         st.dataframe(filtered.sort_values("lift", ascending=False).head(20))
-        st.plotly_chart(px.scatter(filtered, x="support", y="confidence", size="lift"))
+        st.plotly_chart(px.scatter(filtered, x="support", y="confidence", size="lift", color="D8EEDF"))
 
     except:
         st.warning("Run FP-Growth first")
