@@ -119,7 +119,9 @@ elif menu == "👥 Segmentation":
     st.plotly_chart(px.scatter(rfm, x="Frequency", y="Monetary", color="cluster"), use_container_width=True)
 
     st.subheader("Cluster Profile")
-    st.dataframe(rfm.groupby("cluster").mean())
+    # Only numeric columns for mean
+    numeric_cols = ["Recency","Frequency","Monetary"]
+    st.dataframe(rfm.groupby("cluster")[numeric_cols].mean())
 
 # =========================
 # RECOMMENDATION
