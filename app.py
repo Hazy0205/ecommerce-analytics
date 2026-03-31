@@ -207,11 +207,18 @@ elif menu == "⚙️ Admin":
 
         if st.button("Retrain Model"):
             try:
+                # Clean features
                 X = new_df[["price","freight_value","payment_value"]]
                 y = new_df["review_score"]
 
-                X = X.apply(pd.to_numeric, errors="coerce").dropna()
-                y = y.loc[X.index]
+                # Convert numeric
+                X = X.apply(pd.to_numeric, errors="coerce")
+                y = pd.to_numeric(y, errors="coerce")
+
+                # Combine and drop NaN together
+                data_clean = pd.concat([X, y], axis=1).dropna()
+                X = data_clean[["price","freight_value","payment_value"]]
+                y = data_clean["review_score"]
 
                 model = RandomForestRegressor(n_estimators=100, random_state=42)
                 model.fit(X, y)
