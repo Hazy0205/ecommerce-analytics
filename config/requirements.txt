@@ -9,3 +9,4 @@ implicit
 matplotlib
 seaborn
 openpyxl
+scikit-surprise
