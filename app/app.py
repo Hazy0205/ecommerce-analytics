@@ -204,7 +204,7 @@ elif menu == "🎯 Recommendation":
 # MARKET BASKET
 # =========================
 elif menu == "🛍️ Market Basket":
-    st.title("Market Basket Analysis")
+    st.title("🛍️ Market Basket Analysis")
 
     try:
         rules = pd.read_csv("rules.csv")
@@ -222,7 +222,7 @@ elif menu == "🛍️ Market Basket":
 # PREDICTION
 # =========================
 elif menu == "🔮 Prediction":
-    st.title("Prediction")
+    st.title("🔮 Prediction")
 
     price = st.number_input("Price", min_value=0.0)
     freight = st.number_input("Freight", min_value=0.0)
@@ -240,7 +240,7 @@ elif menu == "🔮 Prediction":
 # ADMIN
 # =========================
 elif menu == "⚙️ Admin":
-    st.title("Admin Panel")
+    st.title("⚙️ Admin Panel")
 
     file = st.file_uploader("Upload new dataset", type=["csv"])
 
