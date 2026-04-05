@@ -127,34 +127,78 @@ elif menu == "👥 Segmentation":
 # RECOMMENDATION
 # =========================
 elif menu == "🎯 Recommendation":
-    st.title("🎯 Recommendation")
+    st.title("🎯 Recommendation Product")
+
+    from surprise import Dataset, Reader, SVD
 
     user_id = st.text_input("Customer ID")
-    product_id = st.text_input("Product ID")
 
+    # =========================
+    # LOAD + PREPARE DATA
+    # =========================
+    data_rec = df[["customer_unique_id", "product_id", "review_score"]].dropna()
+
+    # Convert to string (important for Surprise)
+    data_rec["customer_unique_id"] = data_rec["customer_unique_id"].astype(str)
+    data_rec["product_id"] = data_rec["product_id"].astype(str)
+
+    # =========================
+    # TRAIN MODEL (cache để không train lại mỗi lần reload)
+    # =========================
+    @st.cache_resource
+    def train_svd(data):
+        reader = Reader(rating_scale=(1, 5))
+        dataset = Dataset.load_from_df(data, reader)
+        trainset = dataset.build_full_trainset()
+
+        model = SVD()
+        model.fit(trainset)
+
+        return model
+
+    model = train_svd(data_rec)
+
+    # =========================
+    # RECOMMENDATION LOGIC
+    # =========================
     if user_id:
-        user_data = df[df["customer_unique_id"] == user_id]
+        user_id = str(user_id)
 
-        if user_data.empty:
-            st.warning("Cold start → recommend popular")
-            rec = df.groupby("product_id")["review_score"].count().sort_values(ascending=False).head(10)
-            st.dataframe(rec)
+        # ❗ Cold start
+        if user_id not in data_rec["customer_unique_id"].unique():
+            st.warning("Cold start → Recommend popular products")
+
+            popular = (
+                df.groupby("product_id")["review_score"]
+                .count()
+                .sort_values(ascending=False)
+                .head(10)
+                .reset_index()
+            )
+
+            st.dataframe(popular)
         else:
-            profile = user_data.groupby("product_category_name_english")["review_score"].mean()
-            prod = df.groupby(["product_id","product_category_name_english"])["review_score"].mean().reset_index()
+            # Products user already bought
+            purchased = data_rec[
+                data_rec["customer_unique_id"] == user_id
+            ]["product_id"].unique()
 
-            merged = prod.merge(profile, on="product_category_name_english", suffixes=("_prod","_user"))
-            merged["score"] = merged["review_score_prod"] * 0.7 + merged["review_score_user"] * 0.3
+            all_products = data_rec["product_id"].unique()
 
-            st.dataframe(merged.sort_values("score", ascending=False).head(10))
+            predictions = []
 
-    if product_id:
-        try:
-            category = df[df["product_id"] == product_id]["product_category_name_english"].iloc[0]
-            rec = df[df["product_category_name_english"] == category]
-            st.dataframe(rec.head(10))
-        except:
-            st.error("Product not found")
+            for product in all_products:
+                if product not in purchased:
+                    pred = model.predict(user_id, product)
+                    predictions.append((product, pred.est))
+
+            # Top 10
+            top_10 = sorted(predictions, key=lambda x: x[1], reverse=True)[:10]
+
+            rec_df = pd.DataFrame(top_10, columns=["product_id", "predicted_rating"])
+
+            st.subheader("Top 10 Recommendations")
+            st.dataframe(rec_df)
 
 # =========================
 # MARKET BASKET
