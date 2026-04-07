@@ -17,7 +17,7 @@ st.set_page_config(page_title="E-commerce Analytics", layout="wide")
 def load_data(file=None):
     if file:
         return pd.read_csv(file)
-    return pd.read_csv("cleaned_data_small.csv")
+    return pd.read_csv("data/cleaned_data_small.csv")
 
 # =========================
 # RFM FUNCTION (CLEAN + SAFE)
@@ -207,7 +207,7 @@ elif menu == "🛍️ Market Basket":
     st.title("🛍️ Market Basket Analysis")
 
     try:
-        rules = pd.read_csv("rules.csv")
+        rules = pd.read_csv("data/rules.csv")
 
         min_lift = st.slider("Min Lift", 0.0, 10.0, 1.0)
         filtered = rules[rules["lift"] >= min_lift]
